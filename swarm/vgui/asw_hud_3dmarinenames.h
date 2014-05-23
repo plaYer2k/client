@@ -48,8 +48,9 @@ public:
 
 	// ugh, these really need to be pulled out into another class
 	// aliens are calling into this, which is just bad.
-	bool PaintUsingBar( C_ASW_Marine *pMarine, float xPos, float yPos );
-	bool PaintReloadBar( C_ASW_Weapon *pWeapon, float xPos, float yPos );
+	bool PaintUsingBar(C_ASW_Marine *pMarine, float xPos, float yPos);
+	bool PaintReloadBar(C_ASW_Weapon *pWeapon, float xPos, float yPos);
+	bool PaintAmmoBar(float ammoPercentage, float xPos, float yPos);
 	bool PaintGenericBar( Vector vWorldPos, float flProgress, Color rgbaBarColor = Color( 255, 255, 255, 255 ), float flSizeMultiplier = 1.0f, const Vector2D &offset = Vector2D(0, 0)  );
 	bool PaintGenericText( Vector vWorldPos, char *pText, Color vTextColor = Color( 255, 255, 255, 255 ), float flSizeMultiplier = 1.0f, const Vector2D &offset = Vector2D(0, 0) );
 
@@ -76,7 +77,9 @@ public:
 	CPanelAnimationVarAliasType( int, m_nMedicClassIcon, "MedicClassIcon", "vgui/swarm/ClassIcons/MedicClassIcon", "textureid" );
 	CPanelAnimationVarAliasType( int, m_nTechClassIcon, "TechClassIcon", "vgui/swarm/ClassIcons/TechClassIcon", "textureid" );
 	CPanelAnimationVarAliasType( int, m_nTalkingIcon, "TalkingIcon", "voice/voice_icon_hud", "textureid" );
-	CPanelAnimationVarAliasType( int, m_nFastReloadBarBG, "FastReloadBarBG", "vgui/swarm/HUD/HorizHealthBar", "textureid" );
+	CPanelAnimationVarAliasType( int, m_nFastReloadBarBG, "FastReloadBarBG", "vgui/swarm/HUD/HorizHealthBar", "textureid");
+	CPanelAnimationVarAliasType( int, m_nMedicTexture, "MedicEmoteTexture", "vgui/swarm/Emotes/EmoteMedic", "textureid");
+	CPanelAnimationVarAliasType( int, m_nAmmoTexture, "AmmoEmoteTexture", "vgui/swarm/Emotes/EmoteAmmo", "textureid");
 
 private:
 	inline float GetHealthBarMaxWidth( bool bKnockedOut )		const;
@@ -92,6 +95,10 @@ private:
 	float m_flLastNextAttack;
 	float m_flLastFastReloadStart;
 	float m_flLastFastReloadEnd;
+
+	// auto calls
+	float fUnderMarineMagazineLastTime;
+	float fUnderMarineMedicLastTime;
 };
 
 

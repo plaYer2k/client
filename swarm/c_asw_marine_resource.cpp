@@ -13,6 +13,7 @@
 #include "nb_main_panel.h"
 #include "c_asw_campaign_save.h"
 #include "c_asw_game_resource.h"
+#include "ammodef.h"
 
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
@@ -227,6 +228,36 @@ float C_ASW_Marine_Resource::GetClipsPercent()
 		fResult = 1.0f;
 
 	return fResult;
+}
+
+float C_ASW_Marine_Resource::GetClipsPercent2()
+{
+	C_ASW_Marine *marine = GetMarineEntity();
+	if (!marine)
+		return 0;
+
+	C_ASW_Weapon *weapon = marine->GetActiveASWWeapon();
+	if (!weapon)
+		return 0;
+
+	return (float)marine->GetAmmoCount(weapon->GetPrimaryAmmoType()) / (float)(weapon->GetMaxClip1() /* *maxClipsPerWeapon */);
+}
+
+float C_ASW_Marine_Resource::GetClipsPercent3()
+{
+	// get marine entity and terminate if that failed
+	C_ASW_Marine *marine = GetMarineEntity();
+	if (!marine)
+		return 0;
+
+	// Get weapon and terminate if that failed
+	C_ASW_Weapon *weapon = marine->GetActiveASWWeapon();
+	if (!weapon)
+		return 0;
+
+	int iGuns = marine->GetNumberOfWeaponsUsingAmmo(weapon->GetPrimaryAmmoType());
+	int iMaxAmmo = GetAmmoDef()->MaxCarry(weapon->GetPrimaryAmmoType(), marine);
+	return (float)marine->GetAmmoCount(weapon->GetPrimaryAmmoType()) / (float)(iMaxAmmo * iGuns);
 }
 
 float C_ASW_Marine_Resource::GetMedsPercent()

@@ -62,7 +62,13 @@ ConVar asw_world_healthbar_class_icon( "asw_world_healthbar_class_icon", "0", FC
 
 ConVar asw_arrows_for_offscreen_teammates("asw_arrows_for_offscreen_teammates", "1" , FCVAR_ARCHIVE , "Enables or Disables the arrows which point to teammates which are out of screen" , true , 0 , true , 1); //p2k offscreen arrow cVar fix - requested by Aazell
 ConVar asw_fast_reload_under_marine_scale( "asw_fast_reload_under_marine_scale" , "2" , FCVAR_ARCHIVE , "Scales the original Fast Reload Bar" , true , 1 , true , 12); //p2k scalable fast reload bar
-
+ConVar asw_ammo_under_marine("asw_ammo_under_marine", "1", FCVAR_ARCHIVE, "Enable the ammo bar under marines in 3D view.", true, 0, true, 1);
+ConVar asw_magazine_under_marine("asw_magazine_under_marine", "0.15f", FCVAR_ARCHIVE, "Enable an ammo notification on low magazine count.", true, 0, true, 1);
+ConVar asw_magazine_under_marine_offscreen("asw_magazine_under_marine_offscreen", "0", FCVAR_ARCHIVE, "Enable an ammo notification if the marine is offscreen.", true, 0, true, 1);
+ConVar asw_magazine_under_marine_frequency("asw_magazine_under_marine_frequency", "20", FCVAR_ARCHIVE, "Enable an ammo notification on low magazine count.", true, 0, true, 600);
+ConVar asw_medic_under_marine("asw_medic_under_marine", "0.2f", FCVAR_ARCHIVE, "Enable a medic notification on low health.", true, 0, true, 1);
+ConVar asw_medic_under_marine_offscreen("asw_medic_under_marine_offscreen", "0", FCVAR_ARCHIVE, "Enable a medic notification if the marine is offscreen.", true, 0, true, 1);
+ConVar asw_medic_under_marine_frequency("asw_medic_under_marine_frequency", "60", FCVAR_ARCHIVE, "Enable a medic notification on low health.", true, 0, true, 600);
 #define ASW_MAX_MARINE_NAMES 8
 #define ASW_MIN_MARINE_ARROW_SIZE 20
 #define ASW_MAX_MARINE_ARROW_SIZE 60
@@ -578,9 +584,11 @@ void CASWHud3DMarineNames::PaintMarineLabel( int iMyMarineNum, C_ASW_Marine * RE
 		+-----+
 		+-------------+
 		| MARINE NAME |
-		+-------------+
-		[ health bar  ]
+  medic +-------------+ ammo
+   call [ health bar  ] call
+		[ ammo bar    ]
 		[ use bar     ]
+		[ reload bar  ]
 		+-------------+
 		*/
 		// the presence or absence and size of these elements depends on a variety of factors.
@@ -628,6 +636,8 @@ void CASWHud3DMarineNames::PaintMarineLabel( int iMyMarineNum, C_ASW_Marine * RE
 		// compute the size of the health bar.
 		int nHealthBarWidth  = 0;
 		int nHealthBarHeight = 0;
+		int iMarineTargetIndex = ASWGameResource()->GetMarineCrosshairCache()->FindIndexForMarine(pMarine);
+		bool bShowMarineBars = iMarineTargetIndex >= 0 && ASWGameResource()->GetMarineCrosshairCache()->GetElement(iMarineTargetIndex).m_fDistToCursor < asw_marine_labels_cursor_maxdist.GetFloat();
 
 		if ( asw_world_healthbars.GetBool() && bMarineOnScreen )		//  || !bMarineOnScreen
 		{
@@ -820,33 +830,102 @@ void CASWHud3DMarineNames::PaintMarineLabel( int iMyMarineNum, C_ASW_Marine * RE
 			int nNameHeight = nMarineNameHeight;
 			PaintTalkingIcon( pMarine, nBoxCenterX - (nNameWidth/2) - (GetTalkingIconSize() + YRES(2)), nCursorY -nNameHeight - (GetTalkingIconSize()-nNameHeight) );
 		}
-
+		
 		// draw the health bar
-		if ( nHealthBarHeight > 0 )
+		if (bShowMarineBars && bMarineOnScreen)
 		{
 			if ( GetClassIconSize( bMarineOnScreen ) <= 0 )
 				nCursorY += YRES(2);
 
 			PaintHealthBar( pMarine, nBoxCenterX, nCursorY, bMarineOnScreen );
-			nCursorY += nHealthBarHeight + nLineSpacing;
 		}
 
 		C_ASW_Weapon *pWeapon = pMarine->GetActiveASWWeapon();
 		if ( !pWeapon )
 			return;
 
-		// draw the reload bar
-		if ( bLocal && pWeapon && pWeapon->IsReloading() && asw_fast_reload_enabled.GetBool() && asw_fast_reload_under_marine.GetBool() )
+		// draw ammo bar
+		if (!bMarineIsKnockedOut && bShowMarineBars && bMarineOnScreen && pWeapon && asw_ammo_under_marine.GetBool())
 		{
-			PaintReloadBar( pWeapon, nBoxCenterX, nCursorY );
 			nCursorY += nHealthBarHeight + nLineSpacing;
+			PaintAmmoBar(pMR->GetAmmoPercent(), nBoxCenterX, nCursorY);
 		}
 
 		// draw the using bar
-		if ( nUsingBarHeight > 0 )
+		if (!bMarineIsKnockedOut && bShowMarineBars && bMarineOnScreen)
 		{
-			PaintUsingBar( pMarine, nBoxCenterX, nCursorY );
-			nCursorY += nUsingBarHeight + nLineSpacing;
+			nCursorY += nHealthBarHeight + nLineSpacing;
+			PaintUsingBar(pMarine, nBoxCenterX, nCursorY);
+		}
+
+		// draw the reload bar
+		if (bLocal && pWeapon && pWeapon->IsReloading() && asw_fast_reload_enabled.GetBool() && asw_fast_reload_under_marine.GetBool())
+		{
+			nCursorY += nHealthBarHeight + nLineSpacing;
+			PaintReloadBar(pWeapon, nBoxCenterX, nCursorY);
+		}
+
+		// medic sign left to the marine on low hp
+		if (!bMarineIsKnockedOut && (bMarineOnScreen || asw_medic_under_marine_offscreen.GetBool()) && pMarine->GetHealth() <= pMarine->GetMaxHealth() * asw_medic_under_marine.GetFloat())
+		{
+			// the icons size, squared box
+			int iIconSize = 48;
+
+			// iteratie time offset storage
+			if (gpGlobals->curtime > fUnderMarineMedicLastTime + 2 * asw_medic_under_marine_frequency.GetFloat())
+				fUnderMarineMedicLastTime += 2 * asw_medic_under_marine_frequency.GetFloat();
+			
+			// get the intensity based on the time offset relative to the current time
+			float fIconIntensity = (gpGlobals->curtime - fUnderMarineMedicLastTime) / asw_medic_under_marine_frequency.GetFloat();
+			
+			// invert intensity if above half the range of frequency within the range of 0 to 2*frequency
+			if (fIconIntensity > 1.0f)
+				fIconIntensity = 2.0f - fIconIntensity;
+
+			// draw textures
+			surface()->DrawSetColor(Color(255, 255, 255, fIconIntensity*255.0f));
+			surface()->DrawSetTexture(m_nMedicTexture);
+			int xPos = nBoxCenterX - 0.5f * GetHealthBarMaxWidth(false);
+			Vertex_t points[4] =
+			{
+				Vertex_t(Vector2D(xPos - iIconSize, nCursorY - iIconSize), Vector2D(0, 0)),
+				Vertex_t(Vector2D(xPos, nCursorY - iIconSize), Vector2D(1, 0)),
+				Vertex_t(Vector2D(xPos, nCursorY), Vector2D(1, 1)),
+				Vertex_t(Vector2D(xPos - iIconSize, nCursorY), Vector2D(0, 1))
+			};
+			surface()->DrawTexturedPolygon(4, points);
+		}
+
+		// ammo sign right to the marine on low magazines
+		if (!bMarineIsKnockedOut && (bMarineOnScreen || asw_magazine_under_marine_offscreen.GetBool()) && pMR->GetClipsPercent3() <= asw_magazine_under_marine.GetFloat())
+		{
+
+			// the icons size, squared box
+			int iIconSize = 48;
+
+			// iteratie time offset storage
+			if (gpGlobals->curtime > fUnderMarineMagazineLastTime + 2 * asw_magazine_under_marine_frequency.GetFloat())
+				fUnderMarineMagazineLastTime += 2 * asw_magazine_under_marine_frequency.GetFloat();
+
+			// get the intensity based on the time offset relative to the current time
+			float fIconIntensity = (gpGlobals->curtime - fUnderMarineMagazineLastTime) / asw_magazine_under_marine_frequency.GetFloat();
+
+			// invert intensity if above half the range of 2*frequency
+			if (fIconIntensity > 1.0f)
+				fIconIntensity = 2.0f - fIconIntensity;
+
+			// draw textures
+			surface()->DrawSetColor(Color(255, 255, 255, fIconIntensity*255.0f));
+			surface()->DrawSetTexture(m_nAmmoTexture);
+			int xPos = nBoxCenterX + 0.5f * GetHealthBarMaxWidth(false);
+			Vertex_t points[4] =
+			{
+				Vertex_t(Vector2D(xPos, nCursorY - iIconSize), Vector2D(0, 0)),
+				Vertex_t(Vector2D(xPos + iIconSize, nCursorY - iIconSize), Vector2D(1, 0)),
+				Vertex_t(Vector2D(xPos + iIconSize, nCursorY), Vector2D(1, 1)),
+				Vertex_t(Vector2D(xPos, nCursorY), Vector2D(0, 1))
+			};
+			surface()->DrawTexturedPolygon(4, points);
 		}
 
 	}
@@ -1071,23 +1150,24 @@ float CASWHud3DMarineNames::GetUsingBarMaxWidth()	const
 {
 	return PORTRAIT_SIZE;
 }
+
 float CASWHud3DMarineNames::GetUsingBarMaxHeight()	const
 {
 	return 7.0f * ( ScreenHeight() / 576.0f ) * 0.6f;
 }
 
-bool CASWHud3DMarineNames::PaintUsingBar( C_ASW_Marine *pMarine, float xPos, float yPos )
+bool CASWHud3DMarineNames::PaintUsingBar(C_ASW_Marine *pMarine, float xPos, float yPos)
 {
-	if ( !pMarine || !pMarine->GetMarineResource() )
+	if (!pMarine || !pMarine->GetMarineResource())
 		return false;
 
-	float fScale = ( ScreenHeight() / 576.0f ) * 0.6f;
+	float fScale = (ScreenHeight() / 576.0f) * 0.6f;
 	int portrait_size = GetUsingBarMaxWidth();
 	xPos -= PORTRAIT_SIZE * 0.5f;
 	int portrait_x = xPos;
 	int portrait_y = yPos;
 
-	vgui::surface()->DrawSetColor(Color(255,255,255,255));
+	vgui::surface()->DrawSetColor(Color(255, 255, 255, 255));
 	// draw black back
 	vgui::surface()->DrawSetTexture(m_nBlackBarTexture);
 
@@ -1095,64 +1175,64 @@ bool CASWHud3DMarineNames::PaintUsingBar( C_ASW_Marine *pMarine, float xPos, flo
 	int bar_y = portrait_y + (2 * fScale);
 	int bar_height = GetUsingBarMaxHeight();
 	int bar_y2 = bar_y + bar_height;
-	float fFraction = GetUsingFraction( pMarine );
-	if ( fFraction <= 0 )
+	float fFraction = GetUsingFraction(pMarine);
+	if (fFraction <= 0)
 		return false;
 	int using_pixels = (portrait_size * fFraction);
 
 	if (fFraction > 0 && using_pixels <= 0)
 		using_pixels = 1;
 	int bar_x2 = portrait_x + using_pixels;
-	int border = YRES(1);
+	int border = 1;
 	// black part first
 	vgui::surface()->DrawTexturedRect(portrait_x - border, bar_y - border, portrait_x + portrait_size + border * 2 - 1, bar_y2 + border * 2 - 1);
 
 	// red part
 	vgui::surface()->DrawSetTexture(m_nVertAmmoBar);
-	vgui::Vertex_t hpoints[4] = 
-	{ 
-		vgui::Vertex_t( Vector2D(portrait_x, bar_y),	Vector2D(0,0) ), 
-		vgui::Vertex_t( Vector2D(bar_x2, bar_y),		Vector2D(fFraction,0) ), 
-		vgui::Vertex_t( Vector2D(bar_x2, bar_y2),		Vector2D(fFraction,1) ), 
-		vgui::Vertex_t( Vector2D(portrait_x, bar_y2),	Vector2D(0,1) )
-	}; 
-	vgui::surface()->DrawTexturedPolygon( 4, hpoints );
+	vgui::Vertex_t hpoints[4] =
+	{
+		vgui::Vertex_t(Vector2D(portrait_x, bar_y), Vector2D(0, 0)),
+		vgui::Vertex_t(Vector2D(bar_x2, bar_y), Vector2D(fFraction, 0)),
+		vgui::Vertex_t(Vector2D(bar_x2, bar_y2), Vector2D(fFraction, 1)),
+		vgui::Vertex_t(Vector2D(portrait_x, bar_y2), Vector2D(0, 1))
+	};
+	vgui::surface()->DrawTexturedPolygon(4, hpoints);
 
 	return true;
 }
 
-bool CASWHud3DMarineNames::PaintReloadBar( C_ASW_Weapon *pWeapon, float xPos, float yPos )
+bool CASWHud3DMarineNames::PaintReloadBar(C_ASW_Weapon *pWeapon, float xPos, float yPos)
 {
-	if ( !pWeapon )
+	if (!pWeapon)
 		return false;
 
 	bool bFailure = pWeapon->m_bFastReloadFailure;
 	bool bSuccess = pWeapon->m_bFastReloadSuccess;
 
 	float flBGAlpha = 255.0f;
-	Color colorBG =		Color( 32, 32, 32, flBGAlpha );
-	Color colorWindow =	Color( 170, 170, 170, 255 );
-	Color colorBar =	Color( 255, 255, 255, 128 );
+	Color colorBG = Color(32, 32, 32, flBGAlpha);
+	Color colorWindow = Color(170, 170, 170, 255);
+	Color colorBar = Color(255, 255, 255, 128);
 	float flAlphaFade = 1.0f;
 
-	int class_icon_size = GetClassIconSize( true ); //this seems to alwaays return 0
-	int t = GetHealthBarMaxHeight( false ); // those commands return the size of Healtbars
-	int w = GetHealthBarMaxWidth( false );  // which is right under every marine
+	int class_icon_size = GetClassIconSize(true); //this seems to alwaays return 0
+	int t = GetHealthBarMaxHeight(false); // those commands return the size of Healtbars
+	int w = GetHealthBarMaxWidth(false);  // which is right under every marine
 	w *= asw_fast_reload_under_marine_scale.GetFloat(); // Here i did scale up the width
 
-	int iGap = YRES( 2 );
+	int iGap = YRES(2);
 	int overall_width = w + iGap + class_icon_size;
-	
+
 	xPos += class_icon_size + iGap;
-	yPos += ( class_icon_size - t ) / (2 * asw_fast_reload_under_marine_scale.GetFloat()); //because the height of our new reload bar changes, we have to reposition it according on the scale 
+	yPos += (class_icon_size - t) / 2;
 	t *= asw_fast_reload_under_marine_scale.GetFloat(); //and then finally scale the height up
 
 	int iYPos = yPos;
-	xPos = xPos - ( ( overall_width ) * 0.5f );
+	xPos = xPos - ((overall_width)* 0.5f);
 	int iXPos = xPos;
 
 	float fStart = pWeapon->m_fReloadStart;
-	if ( !bFailure && !bSuccess )
+	if (!bFailure && !bSuccess)
 	{
 		m_flLastNextAttack = pWeapon->m_flNextPrimaryAttack;
 	}
@@ -1163,78 +1243,129 @@ bool CASWHud3DMarineNames::PaintReloadBar( C_ASW_Weapon *pWeapon, float xPos, fl
 
 	float flProgress = 0.0f;
 	// if we're in single player, the progress code in the weapon doesn't run on the client because we aren't predicting
-	if ( !cl_predict->GetInt() )
+	if (!cl_predict->GetInt())
 		flProgress = (gpGlobals->curtime - fStart) / fTotalTime;
 	else
 		flProgress = pWeapon->m_fReloadProgress;
 
-	if ( !bFailure && !bSuccess )
+	if (!bFailure && !bSuccess)
 	{
 		m_flLastReloadProgress = flProgress;
-		m_flLastFastReloadStart = ((pWeapon->m_fFastReloadStart - fStart) / fTotalTime)+0.015f;
-		m_flLastFastReloadEnd = ((pWeapon->m_fFastReloadEnd - fStart) / fTotalTime)-0.015f;
+		m_flLastFastReloadStart = ((pWeapon->m_fFastReloadStart - fStart) / fTotalTime) + 0.015f;
+		m_flLastFastReloadEnd = ((pWeapon->m_fFastReloadEnd - fStart) / fTotalTime) - 0.015f;
 	}
 	//Msg( "C: %f - %f - %f Reload Progress = %f\n", gpGlobals->curtime, fFastStart, fFastEnd, flProgress );
 
-	if ( bFailure )
+	if (bFailure)
 	{
 		flBGAlpha = 255.0f;
-		if ( flProgress > 0.75f )
+		if (flProgress > 0.75f)
 			flAlphaFade = (1.0f - flProgress) / 0.25f;
 
-		colorBG = Color( 128, 32, 16, flBGAlpha * flAlphaFade );
-		colorWindow = Color( 200, 128, 128, 250 * flAlphaFade );
-		colorBar =	Color( 255, 255, 255, 128 * flAlphaFade  );
+		colorBG = Color(128, 32, 16, flBGAlpha * flAlphaFade);
+		colorWindow = Color(200, 128, 128, 250 * flAlphaFade);
+		colorBar = Color(255, 255, 255, 128 * flAlphaFade);
 	}
-	else if ( bSuccess )
+	else if (bSuccess)
 	{
 		flAlphaFade = 1.0f - flProgress;
-		colorBG = Color( 170, 170, 170, flBGAlpha * flAlphaFade );
-		colorWindow = Color( 190, 220, 190, 255 * flAlphaFade );
-		colorBar =	Color( 255, 255, 255, 128 * flAlphaFade  );
+		colorBG = Color(170, 170, 170, flBGAlpha * flAlphaFade);
+		colorWindow = Color(190, 220, 190, 255 * flAlphaFade);
+		colorBar = Color(255, 255, 255, 128 * flAlphaFade);
 	}
 
 	// white border
-	vgui::surface()->DrawSetColor( colorBar );
-	vgui::surface()->DrawFilledRect( iXPos - 1, iYPos - 1, iXPos + w + 1, iYPos+t + 1 );
+	vgui::surface()->DrawSetColor(colorBar);
+	vgui::surface()->DrawFilledRect(iXPos - 1, iYPos - 1, iXPos + w + 1, iYPos + t + 1);
 
 	// draw the BG first
 	vgui::surface()->DrawSetColor(colorBG);
 	vgui::surface()->DrawSetTexture(m_nFastReloadBarBG);
-	vgui::Vertex_t bgpoints[4] = 
-	{ 
-		vgui::Vertex_t( Vector2D(iXPos,				iYPos),				Vector2D(0, 0) ), 
-		vgui::Vertex_t( Vector2D(iXPos+w,			iYPos),				Vector2D(1, 0) ),
-		vgui::Vertex_t( Vector2D(iXPos+w,			iYPos+t),			Vector2D(1, 1) ), 
-		vgui::Vertex_t( Vector2D(iXPos,				iYPos+t),			Vector2D(0, 1) )
-	}; 
-	vgui::surface()->DrawTexturedPolygon( 4, bgpoints );
+	vgui::Vertex_t bgpoints[4] =
+	{
+		vgui::Vertex_t(Vector2D(iXPos, iYPos), Vector2D(0, 0)),
+		vgui::Vertex_t(Vector2D(iXPos + w, iYPos), Vector2D(1, 0)),
+		vgui::Vertex_t(Vector2D(iXPos + w, iYPos + t), Vector2D(1, 1)),
+		vgui::Vertex_t(Vector2D(iXPos, iYPos + t), Vector2D(0, 1))
+	};
+	vgui::surface()->DrawTexturedPolygon(4, bgpoints);
 
 	// then the charging bar
 	vgui::surface()->DrawSetColor(colorWindow);
 	vgui::surface()->DrawSetTexture(m_nHorizHealthBar);
-	vgui::Vertex_t chargepoints[4] = 
-	{ 
-		vgui::Vertex_t( Vector2D(iXPos+w*m_flLastFastReloadStart,		iYPos+1),		Vector2D(m_flLastFastReloadStart, 0) ), 
-		vgui::Vertex_t( Vector2D(iXPos+w*m_flLastFastReloadEnd,		iYPos+1),		Vector2D(m_flLastFastReloadEnd, 0) ), 
-		vgui::Vertex_t( Vector2D(iXPos+w*m_flLastFastReloadEnd,		iYPos+t-1),		Vector2D(m_flLastFastReloadEnd, 1) ), 
-		vgui::Vertex_t( Vector2D(iXPos+w*m_flLastFastReloadStart,		iYPos+t-1),		Vector2D(m_flLastFastReloadStart, 1) )
-	}; 
-	vgui::surface()->DrawTexturedPolygon( 4, chargepoints );
+	vgui::Vertex_t chargepoints[4] =
+	{
+		vgui::Vertex_t(Vector2D(iXPos + w*m_flLastFastReloadStart, iYPos + 1), Vector2D(m_flLastFastReloadStart, 0)),
+		vgui::Vertex_t(Vector2D(iXPos + w*m_flLastFastReloadEnd, iYPos + 1), Vector2D(m_flLastFastReloadEnd, 0)),
+		vgui::Vertex_t(Vector2D(iXPos + w*m_flLastFastReloadEnd, iYPos + t - 1), Vector2D(m_flLastFastReloadEnd, 1)),
+		vgui::Vertex_t(Vector2D(iXPos + w*m_flLastFastReloadStart, iYPos + t - 1), Vector2D(m_flLastFastReloadStart, 1))
+	};
+	vgui::surface()->DrawTexturedPolygon(4, chargepoints);
 
 	// now the delay bar
 	vgui::surface()->DrawSetColor(colorBar);
 	vgui::surface()->DrawSetTexture(m_nWhiteTexture);
-	vgui::Vertex_t delaypoints[4] = 
-	{ 
-		vgui::Vertex_t( Vector2D(iXPos+w*(MAX(m_flLastReloadProgress-0.01f,0)),		iYPos),			Vector2D( MAX(m_flLastReloadProgress-0.02f,0), 0 ) ), 
-		vgui::Vertex_t( Vector2D(iXPos+w*(MAX(m_flLastReloadProgress+0.01f,0)),		iYPos),			Vector2D( m_flLastReloadProgress, 0) ), 
-		vgui::Vertex_t( Vector2D(iXPos+w*(MAX(m_flLastReloadProgress+0.01f,0)),		iYPos+t),		Vector2D( m_flLastReloadProgress, 0) ), 
-		vgui::Vertex_t( Vector2D(iXPos+w*(MAX(m_flLastReloadProgress-0.01f,0)),		iYPos+t),		Vector2D( MAX(m_flLastReloadProgress-0.02f,0), 0 ) )
-	}; 
-	vgui::surface()->DrawTexturedPolygon( 4, delaypoints );
+	vgui::Vertex_t delaypoints[4] =
+	{
+		vgui::Vertex_t(Vector2D(iXPos + w*(MAX(m_flLastReloadProgress - 0.01f, 0)), iYPos), Vector2D(MAX(m_flLastReloadProgress - 0.02f, 0), 0)),
+		vgui::Vertex_t(Vector2D(iXPos + w*(MAX(m_flLastReloadProgress + 0.01f, 0)), iYPos), Vector2D(m_flLastReloadProgress, 0)),
+		vgui::Vertex_t(Vector2D(iXPos + w*(MAX(m_flLastReloadProgress + 0.01f, 0)), iYPos + t), Vector2D(m_flLastReloadProgress, 0)),
+		vgui::Vertex_t(Vector2D(iXPos + w*(MAX(m_flLastReloadProgress - 0.01f, 0)), iYPos + t), Vector2D(MAX(m_flLastReloadProgress - 0.02f, 0), 0))
+	};
+	vgui::surface()->DrawTexturedPolygon(4, delaypoints);
 
 	///////////
+	return true;
+}
+
+bool CASWHud3DMarineNames::PaintAmmoBar(float ammoPercentage, float xPos, float yPos)
+{
+	Color colorBG = Color(32, 32, 32, 255);
+	Color colorBorder = Color(255, 255, 255, 128);
+	Color colorBar = Color(170, 170, 170, 255);
+
+	int class_icon_size = GetClassIconSize(true); //this seems to alwaays return 0
+	int h = GetHealthBarMaxHeight(false); // those commands return the size of Healtbars
+	int w = GetHealthBarMaxWidth(false);  // which is right under every marine
+
+	int iGap = YRES(2);
+	int overall_width = w + iGap + class_icon_size;
+
+	xPos += class_icon_size + iGap;
+	//yPos += (class_icon_size - h) / 2;
+
+	int iYPos = yPos;
+	xPos = xPos - ((overall_width)* 0.5f);
+	int iXPos = xPos;
+
+	// white border
+	vgui::surface()->DrawSetColor(colorBorder);
+	vgui::surface()->DrawFilledRect(iXPos - 1, iYPos - 1, iXPos + w + 1, iYPos + h + 1);
+
+	// draw the BG first
+	vgui::surface()->DrawSetColor(colorBG);
+	vgui::surface()->DrawSetTexture(m_nFastReloadBarBG);
+	vgui::Vertex_t bgpoints[4] =
+	{
+		vgui::Vertex_t(Vector2D(iXPos, iYPos), Vector2D(0, 0)),
+		vgui::Vertex_t(Vector2D(iXPos + w, iYPos), Vector2D(1, 0)),
+		vgui::Vertex_t(Vector2D(iXPos + w, iYPos + h), Vector2D(1, 1)),
+		vgui::Vertex_t(Vector2D(iXPos, iYPos + h), Vector2D(0, 1))
+	};
+	vgui::surface()->DrawTexturedPolygon(4, bgpoints);
+
+	// then the ammo capacity
+	vgui::surface()->DrawSetColor(colorBar);
+	vgui::surface()->DrawSetTexture(m_nHorizHealthBar);
+	vgui::Vertex_t barpoints[4] =
+	{
+		vgui::Vertex_t(Vector2D(iXPos, iYPos), Vector2D(0, 0)),
+		vgui::Vertex_t(Vector2D(iXPos + w*ammoPercentage, iYPos), Vector2D(1, 0)),
+		vgui::Vertex_t(Vector2D(iXPos + w*ammoPercentage, iYPos + h), Vector2D(1, 1)),
+		vgui::Vertex_t(Vector2D(iXPos, iYPos + h), Vector2D(0, 1))
+	};
+	vgui::surface()->DrawTexturedPolygon(4, barpoints);
+
 	return true;
 }
 
