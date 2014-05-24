@@ -275,9 +275,14 @@ public:
 	Vector m_vecFacingPoint, m_vecFacingPointFromServer;
 	float m_fStopFacingPointTime;
 
+	// Emote Enumerates: eEmoteMedic = 0, eEmoteAmmo, eEmoteSmile, eEmoteStop, eEmoteGo, eEmoteExclaim, eEmoteAnimeSmile, eEmoteQuestion, eEmoteMax = 8
+	enum emoteEnums { eEmoteMedic = 0, eEmoteAmmo, eEmoteSmile, eEmoteStop, eEmoteGo, eEmoteExclaim, eEmoteAnimeSmile, eEmoteQuestion, eEmoteMax };
+	// p2k: timestamps for emotes to recall them for longer than the 2 seconds as described in TickEmotes()
+	float fLastEmoteCall[eEmoteMax];
+
 	// emote system
 	void TickEmotes(float d);
-	bool TickEmote(float d, bool bEmote, bool& bClientEmote, float& fEmoteTime);
+	bool TickEmote(float d, bool bEmote, bool& bClientEmote, float& fEmoteTime, emoteEnums emoteNum);
 	CNetworkVar(bool, bEmoteMedic);
 	CNetworkVar(bool, bEmoteAmmo);
 	CNetworkVar(bool, bEmoteSmile);

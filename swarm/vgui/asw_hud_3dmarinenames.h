@@ -99,6 +99,8 @@ private:
 	// auto calls
 	float fUnderMarineMagazineLastTime;
 	float fUnderMarineMedicLastTime;
+	float fLastMarineCallMedic[ASW_MAX_MARINE_RESOURCES];
+	float fLastMarineCallAmmo[ASW_MAX_MARINE_RESOURCES];
 };
 
 

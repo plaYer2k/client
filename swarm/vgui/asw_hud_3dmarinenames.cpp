@@ -66,9 +66,11 @@ ConVar asw_ammo_under_marine("asw_ammo_under_marine", "1", FCVAR_ARCHIVE, "Enabl
 ConVar asw_magazine_under_marine("asw_magazine_under_marine", "0.15f", FCVAR_ARCHIVE, "Enable an ammo notification on low magazine count.", true, 0, true, 1);
 ConVar asw_magazine_under_marine_offscreen("asw_magazine_under_marine_offscreen", "0", FCVAR_ARCHIVE, "Enable an ammo notification if the marine is offscreen.", true, 0, true, 1);
 ConVar asw_magazine_under_marine_frequency("asw_magazine_under_marine_frequency", "20", FCVAR_ARCHIVE, "Enable an ammo notification on low magazine count.", true, 0, true, 600);
+ConVar asw_magazine_under_marine_recall_time("asw_magazine_under_marine_recall_time", "10", FCVAR_ARCHIVE, "Time the Ammo Call Emote will be remembered and displayed at the left of a marine if enabled", true, 0, true, 60);
 ConVar asw_medic_under_marine("asw_medic_under_marine", "0.2f", FCVAR_ARCHIVE, "Enable a medic notification on low health.", true, 0, true, 1);
 ConVar asw_medic_under_marine_offscreen("asw_medic_under_marine_offscreen", "0", FCVAR_ARCHIVE, "Enable a medic notification if the marine is offscreen.", true, 0, true, 1);
 ConVar asw_medic_under_marine_frequency("asw_medic_under_marine_frequency", "60", FCVAR_ARCHIVE, "Enable a medic notification on low health.", true, 0, true, 600);
+ConVar asw_medic_under_marine_recall_time("asw_medic_under_marine_recall_time", "10", FCVAR_ARCHIVE, "Time the Medic Call Emote will be remembered and displayed at the left of a marine if enabled", true, 0, true, 60);
 #define ASW_MAX_MARINE_NAMES 8
 #define ASW_MIN_MARINE_ARROW_SIZE 20
 #define ASW_MAX_MARINE_ARROW_SIZE 60
@@ -536,7 +538,7 @@ void CASWHud3DMarineNames::PaintMarineLabel( int iMyMarineNum, C_ASW_Marine * RE
 		vMarinePos = pMarine->GetASWVehicle()->GetEntity()->GetAbsOrigin();
 		if ( gpGlobals->maxClients>1 && pMarine->GetClientsideVehicle() && pMarine->GetClientsideVehicle()->GetEntity() )
 		{
-			vMarinePos = pMarine->GetClientsideVehicle()->GetEntity()->GetAbsOrigin();		
+			vMarinePos = pMarine->GetClientsideVehicle()->GetEntity()->GetAbsOrigin();
 		}
 	}
 	//if ( bMarineIsKnockedOut )
@@ -866,7 +868,7 @@ void CASWHud3DMarineNames::PaintMarineLabel( int iMyMarineNum, C_ASW_Marine * RE
 		}
 
 		// medic sign left to the marine on low hp
-		if (!bMarineIsKnockedOut && (bMarineOnScreen || asw_medic_under_marine_offscreen.GetBool()) && pMarine->GetHealth() <= pMarine->GetMaxHealth() * asw_medic_under_marine.GetFloat())
+		if (!bMarineIsKnockedOut && (bMarineOnScreen || asw_medic_under_marine_offscreen.GetBool()) && (pMarine->GetHealth() <= pMarine->GetMaxHealth() * asw_medic_under_marine.GetFloat() || pMarine->fLastEmoteCall[C_ASW_Marine::eEmoteMedic] + asw_medic_under_marine_recall_time.GetFloat() > gpGlobals->curtime))
 		{
 			// the icons size, squared box
 			int iIconSize = 48;
@@ -897,7 +899,7 @@ void CASWHud3DMarineNames::PaintMarineLabel( int iMyMarineNum, C_ASW_Marine * RE
 		}
 
 		// ammo sign right to the marine on low magazines
-		if (!bMarineIsKnockedOut && (bMarineOnScreen || asw_magazine_under_marine_offscreen.GetBool()) && pMR->GetClipsPercent3() <= asw_magazine_under_marine.GetFloat())
+		if (!bMarineIsKnockedOut && (bMarineOnScreen || asw_magazine_under_marine_offscreen.GetBool()) && (pMR->GetClipsPercent3() <= asw_magazine_under_marine.GetFloat() || pMarine->fLastEmoteCall[C_ASW_Marine::eEmoteAmmo] + asw_magazine_under_marine_recall_time.GetFloat() > gpGlobals->curtime))
 		{
 
 			// the icons size, squared box
